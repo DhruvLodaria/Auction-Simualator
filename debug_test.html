@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Debug Test</title>
+</head>
+<body>
+    <h1>API Debug Test</h1>
+    <div id="output"></div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            output.innerHTML += '<p>' + message + '</p>';
+        }
+        
+        async function testAPIs() {
+            log('Testing APIs...');
+            
+            // Test 1: Get agents
+            try {
+                log('Testing /get_agents...');
+                const response1 = await fetch('/get_agents');
+                const data1 = await response1.json();
+                log('✅ /get_agents success: ' + JSON.stringify(data1, null, 2));
+            } catch (error) {
+                log('❌ /get_agents error: ' + error.message);
+            }
+            
+            // Test 2: Select agents
+            try {
+                log('Testing /select_agents...');
+                const response2 = await fetch('/select_agents', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({agent_ids: ['truthful']})
+                });
+                const data2 = await response2.json();
+                log('✅ /select_agents success: ' + JSON.stringify(data2, null, 2));
+            } catch (error) {
+                log('❌ /select_agents error: ' + error.message);
+            }
+            
+            // Test 3: Start round
+            try {
+                log('Testing /start_round...');
+                const response3 = await fetch('/start_round', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data3 = await response3.json();
+                log('✅ /start_round success: ' + JSON.stringify(data3, null, 2));
+            } catch (error) {
+                log('❌ /start_round error: ' + error.message);
+            }
+        }
+        
+        // Run tests when page loads
+        document.addEventListener('DOMContentLoaded', testAPIs);
+    </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Test</title>
+</head>
+<body>
+    <h1>Debug Test Page</h1>
+    <button id="testBtn">Test API</button>
+    <div id="result"></div>
+    
+    <script>
+        console.log('Debug page loaded');
+        
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            console.log('Test button clicked');
+            try {
+                const response = await fetch('/test');
+                const data = await response.json();
+                console.log('API Response:', data);
+                document.getElementById('result').innerHTML = JSON.stringify(data);
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
