@@ -279,7 +279,12 @@ class ShadingAgent(BaseAgent):
     def should_abandon_bid(self, current_price: float, opponent_last_bid: float, game_round: int) -> bool:
         # Abandon if can't maintain profit margin
         return opponent_last_bid >= self.estimated_value * self.shade_factor
+
+class QLearningAgent(BaseAgent):
+    """Q-Learning Agent with Experience Replay for Bidding Game"""
+    
     def __init__(self):
+        super().__init__("Q-Learning Agent", "Reinforcement Learning with Q-Table")
         # Q-table for state-action values
         self.q_table: Dict[str, float] = {}
         
@@ -353,8 +358,8 @@ class ShadingAgent(BaseAgent):
     def get_actions(self, current_price: float, last_bid: float = 0) -> List[float]:
         """Get available actions (bid amounts relative to price and last bid)"""
         if last_bid == 0:
-            # First bid must be below market value
-            starting_bid_ratios = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9]
+            # First bid can now be any amount - below, at, or above market value
+            starting_bid_ratios = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2]
             return [ratio * current_price for ratio in starting_bid_ratios]
         else:
             # Subsequent bids are incremental increases

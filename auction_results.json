@@ -1,0 +1,36 @@
+{
+  "final_auction": {
+    "winner": "Aggressive_Agent",
+    "price": 590,
+    "efficiency": 0.8200000000000001,
+    "rounds": 25,
+    "valuations": {
+      "Conservative_Agent": 423.4929840179242,
+      "Aggressive_Agent": 590.5788808806709,
+      "Balanced_Agent": 517.217274148204,
+      "Explorer_Agent": 465.71071686375717
+    }
+  },
+  "training_summary": {
+    "avg_winning_price": 465.75,
+    "avg_efficiency": 0.8347,
+    "agent_performance": {
+      "Conservative_Agent": {
+        "win_rate": 0.04477611940298507,
+        "avg_profit": 155.42562929567572
+      },
+      "Aggressive_Agent": {
+        "win_rate": 0.6019900497512438,
+        "avg_profit": 54.87168568069736
+      },
+      "Balanced_Agent": {
+        "win_rate": 0.16417910447761194,
+        "avg_profit": 105.98815893458284
+      },
+      "Explorer_Agent": {
+        "win_rate": 0.18407960199004975,
+        "avg_profit": 105.95656363551862
+      }
+    }
+  }
+}

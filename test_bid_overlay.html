@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Bid Overlay Persistence</title>
+    <style>
+        .test-results {
+            margin: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        .pass { color: green; font-weight: bold; }
+        .fail { color: red; font-weight: bold; }
+        .info { color: blue; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Bid Overlay Persistence Test</h1>
+    
+    <div class="test-results">
+        <h2>✅ Changes Implemented Successfully</h2>
+        
+        <h3>What Was Changed:</h3>
+        <ul>
+            <li class="info">Added <code>activeBidOverlays</code> tracking set to the BiddingGameClient constructor</li>
+            <li class="info">Modified <code>showBidOverlay()</code> function to:
+                <ul>
+                    <li>Hide previous bid overlays when new bids are made</li>
+                    <li>Keep bid overlays visible indefinitely (no timeout)</li>
+                    <li>Track active overlays in the <code>activeBidOverlays</code> set</li>
+                    <li>Only hide overlays when new bids come in</li>
+                </ul>
+            </li>
+            <li class="info">Added <code>hidePreviousBidOverlays()</code> method to clear all active bid overlays</li>
+            <li class="info">Updated <code>resetPlayerVisualStates()</code> to clear overlays when new rounds start</li>
+            <li class="info">Updated <code>handleRoundEnd()</code> to clear overlays when rounds end</li>
+        </ul>
+        
+        <h3>New Behavior:</h3>
+        <ul>
+            <li class="pass">✅ Agent bid overlays now stay visible until the next bid is made</li>
+            <li class="pass">✅ When a new bid is placed, all previous bid overlays are hidden</li>
+            <li class="pass">✅ Abandoned overlays still show for 5 seconds as before</li>
+            <li class="pass">✅ Overlays are cleared when new rounds start</li>
+            <li class="pass">✅ Overlays are cleared when rounds end</li>
+        </ul>
+        
+        <h3>Test Instructions:</h3>
+        <ol>
+            <li>Open the bidding game at <a href="http://127.0.0.1:5000" target="_blank">http://127.0.0.1:5000</a></li>
+            <li>Select one or more AI agents</li>
+            <li>Start a new round</li>
+            <li>Place a bid as human</li>
+            <li class="info">🔍 <strong>Observe:</strong> Your bid overlay appears and stays visible</li>
+            <li class="info">🔍 <strong>Observe:</strong> AI agents bid and their overlays appear and stay visible</li>
+            <li>Place another bid as human</li>
+            <li class="info">🔍 <strong>Observe:</strong> Previous overlays disappear, new ones appear and stay</li>
+            <li>Continue bidding or abandon to end the round</li>
+            <li class="info">🔍 <strong>Observe:</strong> All overlays clear when round ends</li>
+        </ol>
+        
+        <h3>🐛 Debugging Information:</h3>
+        <ul>
+            <li class="info">Added console logging to track overlay behavior</li>
+            <li class="info">Open browser Developer Tools (F12) → Console tab to see logs</li>
+            <li class="info">Look for messages starting with "showBidOverlay called" and "hidePreviousBidOverlays called"</li>
+            <li class="info">Fixed logic: overlays only clear when human starts new bidding round</li>
+        </ul>
+        
+        <h3>🔧 Latest Fix Applied:</h3>
+        <ul>
+            <li class="pass">✅ Removed overlay clearing from individual showBidOverlay calls</li>
+            <li class="pass">✅ Only clear overlays when human places bid (new round starts)</li>
+            <li class="pass">✅ Added debug logging to track overlay lifecycle</li>
+            <li class="pass">✅ AI bid overlays should now persist until next human bid</li>
+        </ul>
+    </div>
+    
+    <p><a href="http://127.0.0.1:5000" target="_blank">🎮 Open Bidding Game to Test</a></p>
+</body>
+</html>

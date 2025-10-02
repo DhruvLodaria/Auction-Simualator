@@ -82,25 +82,49 @@ def setup_gemini_api():
         
         print("✅ API key updated in .env file")
         
-        # Test the API key
-        print("\n🧪 Testing API key...")
-        try:
+        # Test the API keyimport os
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# Load environment variables
+load_dotenv()
+
+# Get API key
+api_key = os.getenv('GEMINI_API_KEY')
+print(f"API Key found: {api_key[:10]}..." if api_key else "No API key found")
+
+if api_key:
+    try:
+        # Configure Gemini
+        genai.configure(api_key=api_key)
+        
+        # Test the API
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content("Hello, this is a test.")
+        print("✅ API key test successful!")
+        print(f"Response: {response.text[:50]}...")
+    except Exception as e:
+        print(f"❌ API key test failed: {e}")
+else:
+    print("❌ No API key found in environment variables")
+    print("\n🧪 Testing API key...")
+    try:
             import google.generativeai as genai
             genai.configure(api_key=new_key)
             model = genai.GenerativeModel('gemini-1.5-flash')
             response = model.generate_content("Hello")
             print("✅ API key test successful!")
             return True
-        except ImportError:
+    except ImportError:
             print("⚠️  google-generativeai package not installed")
             print("   Run: pip install google-generativeai")
             return False
-        except Exception as e:
+    except Exception as e:
             print(f"❌ API key test failed: {e}")
             if "API_KEY_INVALID" in str(e):
                 print("   Please check your API key at https://aistudio.google.com/app/apikey")
-            return False
-    else:
+        return False
+            else:
         print("\n📝 Manual setup instructions:")
         print(f"1. Edit the file: {os.path.abspath(env_file)}")
         print("2. Replace 'your_actual_api_key_here' with your real API key")

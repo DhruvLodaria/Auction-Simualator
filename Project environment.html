@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Agent Auction Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 960px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8 flex items-center justify-center min-h-screen">
+    <div class="container mx-auto p-8 bg-white rounded-xl shadow-lg">
+        <h1 class="text-4xl font-bold text-center mb-6 text-gray-800">Software Auction</h1>
+        <p class="text-center text-gray-500 mb-8">Real-time simulation of competing AI agents.</p>
+
+        <div id="auction-details" class="bg-blue-50 p-6 rounded-lg mb-8 shadow-inner">
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-xl font-semibold text-blue-800">Current Bid:</span>
+                <span id="current-bid" class="text-3xl font-extrabold text-blue-600">$0</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-xl font-semibold text-blue-800">Last Bidder:</span>
+                <span id="last-bidder" class="text-xl font-bold text-blue-600">N/A</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-green-50 p-6 rounded-lg shadow-md">
+                <h3 class="font-semibold text-xl text-green-800 mb-2">Agent 1</h3>
+                <p id="agent-1-value" class="text-gray-700">Valuation: N/A</p>
+                <p id="agent-1-status" class="text-gray-500 italic">Status: Waiting</p>
+            </div>
+            <div class="bg-yellow-50 p-6 rounded-lg shadow-md">
+                <h3 class="font-semibold text-xl text-yellow-800 mb-2">Agent 2</h3>
+                <p id="agent-2-value" class="text-gray-700">Valuation: N/A</p>
+                <p id="agent-2-status" class="text-gray-500 italic">Status: Waiting</p>
+            </div>
+            <div class="bg-purple-50 p-6 rounded-lg shadow-md">
+                <h3 class="font-semibold text-xl text-purple-800 mb-2">Agent 3</h3>
+                <p id="agent-3-value" class="text-gray-700">Valuation: N/A</p>
+                <p id="agent-3-status" class="text-gray-500 italic">Status: Waiting</p>
+            </div>
+        </div>
+
+        <div class="bg-gray-50 p-6 rounded-lg shadow-inner">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Auction History</h2>
+            <ul id="history-list" class="space-y-2 text-gray-600">
+                <!-- Bid history will be populated here by JavaScript -->
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const currentBidEl = document.getElementById('current-bid');
+        const lastBidderEl = document.getElementById('last-bidder');
+        const historyListEl = document.getElementById('history-list');
+
+        const agentStatus = {
+            1: document.getElementById('agent-1-status'),
+            2: document.getElementById('agent-2-status'),
+            3: document.getElementById('agent-3-status')
+        };
+        const agentValue = {
+            1: document.getElementById('agent-1-value'),
+            2: document.getElementById('agent-2-value'),
+            3: document.getElementById('agent-3-value')
+        };
+
+        let lastHistoryLength = 0;
+
+        async function fetchAuctionData() {
+            try {
+                const response = await fetch('/data');
+                const data = await response.json();
+
+                // Update auction details
+                currentBidEl.textContent = `$${data.current_bid.toFixed(2)}`;
+                lastBidderEl.textContent = data.last_bidder !== -1 ? `Agent ${data.last_bidder + 1}` : 'N/A';
+
+                // Update agent statuses
+                data.agents.forEach((agent, index) => {
+                    agentValue[index + 1].textContent = `Valuation: $${agent.valuation.toFixed(2)}`;
+                    agentStatus[index + 1].textContent = `Status: ${agent.is_active ? 'Active' : 'Dropped Out'}`;
+                    if (data.winning_agent === index) {
+                        agentStatus[index + 1].textContent = 'Status: Winner!';
+                    }
+                });
+
+                // Add new history items
+                if (data.history.length > lastHistoryLength) {
+                    const newEntries = data.history.slice(lastHistoryLength);
+                    newEntries.forEach(entry => {
+                        const li = document.createElement('li');
+                        li.textContent = `Agent ${entry.bidder + 1} bid $${entry.bid_amount.toFixed(2)}`;
+                        li.className = "p-2 bg-white rounded-md shadow-sm border border-gray-200";
+                        historyListEl.appendChild(li);
+                    });
+                    historyListEl.scrollTop = historyListEl.scrollHeight;
+                    lastHistoryLength = data.history.length;
+                }
+
+            } catch (error) {
+                console.error('Failed to fetch auction data:', error);
+            }
+        }
+
+        // Fetch data initially and then every 1 second
+        fetchAuctionData();
+        setInterval(fetchAuctionData, 1000);
+    </script>
+</body>
+</html>

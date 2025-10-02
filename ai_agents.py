@@ -8,7 +8,6 @@ import random
 import math
 import json
 import os
-import pickle
 from typing import Dict, List, Tuple, Optional, Union
 from abc import ABC, abstractmethod
 
@@ -447,7 +446,7 @@ class GeminiAgent(BaseAgent):
             raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable or pass api_key parameter.")
         
         genai.configure(api_key=self.api_key)  # type: ignore
-        self.model = genai.GenerativeModel('gemini-1.5-flash')  # type: ignore
+        self.model = genai.GenerativeModel('models/gemini-2.0-flash')  # type: ignore
         
         # Bidding context and history
         self.bidding_context: List[Dict] = []
@@ -644,7 +643,7 @@ def create_agent_by_name(agent_name: str) -> BaseAgent:
         'jump': JumpBiddingAgent,
         'shader': ShadingAgent,
         'collusive': CollusiveAgent,
-        'gemini': lambda: GeminiAgent() if GEMINI_AVAILABLE else TruthfulAgent()
+        'gemini': lambda: GeminiAgent() if GEMINI_AVAILABLE else TruthfulAgent(),
     }
     
     if agent_name.lower() in agents:

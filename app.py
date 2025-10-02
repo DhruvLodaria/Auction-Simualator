@@ -4,7 +4,7 @@ RL Bidding Game - Flask Application
 A competitive bidding game where a human player faces off against a reinforcement learning AI agent.
 """
 
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_file
 from flask_cors import CORS
 import os
 import json
@@ -12,6 +12,8 @@ import random
 import math
 from datetime import datetime
 from ai_agents import create_agent_by_name, get_all_available_agents
+import io
+import csv
 
 # Load environment variables from .env file if it exists
 try:
@@ -19,8 +21,8 @@ try:
     load_dotenv()
 except ImportError:
     pass  # python-dotenv not installed, environment variables should be set manually
-
 app = Flask(__name__)
+
 app.secret_key = 'your-secret-key-here'  # Change this in production
 
 # Enable CORS for all routes
@@ -38,7 +40,7 @@ class BiddingGame:
             if api_key and api_key != 'your_actual_api_key_here':
                 genai.configure(api_key=api_key)  # type: ignore
                 # Test the API key with a simple request
-                test_model = genai.GenerativeModel('gemini-1.5-flash')  # type: ignore
+                test_model = genai.GenerativeModel('models/gemini-2.0-flash')  # type: ignore
                 test_response = test_model.generate_content("Hello")
                 self.gemini_model = test_model
                 self.gemini_available = True
@@ -107,7 +109,7 @@ Generate a REAL-WORLD SOFTWARE that people use every day in their personal or pr
   "market_segment": "Individual"
 }
 
-Generate ONE real software with annual price between $30-$300:
+Generate ONE real software with annual price between $30-$3000:
 """
             
             response = self.gemini_model.generate_content(prompt)  # type: ignore
@@ -219,7 +221,7 @@ Provide your analysis:
             except (json.JSONDecodeError, KeyError) as e:
                 # Fallback analysis based on simple price comparison
                 price_diff_percent = (final_bid - market_price) / market_price * 100
-                is_winner = final_bid <= market_price * 1.05  # Allow 5% overpay for good deal
+                is_winner = final_bid <= market_price * 1.12  # Allow 15% overpay for good deal
                 
                 if price_diff_percent <= -10:
                     assessment = 'EXCELLENT'
@@ -350,7 +352,13 @@ def select_agents():
         print(f"DEBUG: select_agents called with method: {request.method}")
         print(f"DEBUG: Content-Type: {request.content_type}")
         
-        data = request.get_json()
+        # Handle JSON parsing with proper error handling
+        try:
+            data = request.get_json(force=True) if request.data else None
+        except Exception as json_error:
+            print(f"JSON parsing failed: {json_error}")
+            return jsonify({'error': 'Invalid JSON data provided'}), 400
+        
         print(f"DEBUG: Received data: {data}")
         
         if not data:
@@ -426,6 +434,7 @@ def index():
         session['ai_score'] = 0
         session['human_wins'] = 0
         session['ai_wins'] = 0
+        session['agent_wins'] = {}  # Track individual agent wins
         session['game_round'] = 0
         session['game_history'] = []
         
@@ -467,7 +476,13 @@ def start_round():
 def place_bid():
     """Handle human bid placement and multi-agent responses"""
     try:
-        data = request.get_json()
+        # Handle JSON parsing with proper error handling
+        try:
+            data = request.get_json(force=True) if request.data else None
+        except Exception as json_error:
+            print(f"JSON parsing failed: {json_error}")
+            return jsonify({'error': 'Invalid JSON data provided'}), 400
+        
         if not data:
             return jsonify({'error': 'No data provided'}), 400
             
@@ -482,11 +497,11 @@ def place_bid():
         if bid_value <= 0:
             return jsonify({'error': 'Please enter a valid bid amount!'}), 400
         
-        # First bid must be below market value
-        if current_highest_bid == 0 and bid_value >= current_item['actual_price']:
-            return jsonify({
-                'error': f'First bid must be below market value of ${current_item["actual_price"]:.2f}!'
-            }), 400
+        # Allow first bid to be any positive amount (no longer restricted to below market value)
+        # if current_highest_bid == 0 and bid_value >= current_item['actual_price']:
+        #     return jsonify({
+        #         'error': f'First bid must be below market value of ${current_item["actual_price"]:.2f}!'
+        #     }), 400
         
         # Subsequent bids must be higher than current highest
         if current_highest_bid > 0 and bid_value <= current_highest_bid:
@@ -509,6 +524,10 @@ def place_bid():
         # Record human bid for all AI agents
         for agent in current_agents.values():
             agent.record_opponent_bid(bid_value)
+            
+            # Set final game info for neural network agents
+            if hasattr(agent, 'set_final_game_info'):
+                agent.set_final_game_info(bid_value, current_item['actual_price'])
         
         # Process AI agents' responses
         ai_bids = []
@@ -724,32 +743,39 @@ def end_round():
     if market_analysis:
         print(f"DEBUG: Market Analysis - Winner: {market_analysis.get('is_market_winner')}, Assessment: {market_analysis.get('value_assessment')}")
     
-    # Determine point distribution based on market analysis
+    # Determine point distribution and win tracking based on market analysis
+    # First check if we have market analysis (either from Gemini or fallback)
+    poor_performance = False
+    if market_analysis:
+        poor_performance = (market_analysis.get('is_market_winner') == False or 
+                           market_analysis.get('value_assessment', '').upper() in ['POOR', 'TERRIBLE'])
+    
     if human_won:
-        if market_analysis and market_analysis.get('is_market_winner'):
-            # Human made a good deal - award normal points
+        if poor_performance:
+            # Human overpaid or performed poorly - NO POINTS and NO WIN COUNT
+            print(f"DEBUG: Human performed poorly - zero points and no win awarded")
+            # Do NOT increment human_wins or human_score when performance is poor
+        elif market_analysis and market_analysis.get('is_market_winner'):
+            # Human made a good deal - award normal points and win
             human_points = game.calculate_score(actual_price, current_highest_bid)
             session['human_score'] = session.get('human_score', 0) + human_points
             session['human_wins'] = session.get('human_wins', 0) + 1
-        elif market_analysis and market_analysis.get('is_market_winner') == False:
-            # Human overpaid - no points to human, give small learning bonus to all AI agents
-            print(f"Human overpaid - redistributing learning points to AI agents")
-            learning_points = game.calculate_score(actual_price, current_highest_bid) // len(active_agents) if active_agents else 0
-            
-            if 'agent_scores' not in session:
-                session['agent_scores'] = {}
-            
-            for agent_id in active_agents:
-                session['agent_scores'][agent_id] = session['agent_scores'].get(agent_id, 0) + learning_points
-                print(f"DEBUG: {current_agents[agent_id].name} gets {learning_points} learning points")
-            
-            # Still count as human win for statistics but no score reward
-            session['human_wins'] = session.get('human_wins', 0) + 1
+            print(f"DEBUG: Human wins with good deal - gains {human_points} points and a win")
+        elif not market_analysis:
+            # No market analysis available - only award if not clearly overpaying
+            if current_highest_bid <= actual_price * 1.1:  # Allow 10% overpay without analysis
+                human_points = game.calculate_score(actual_price, current_highest_bid)
+                session['human_score'] = session.get('human_score', 0) + human_points
+                session['human_wins'] = session.get('human_wins', 0) + 1
+                print(f"DEBUG: Human wins (no analysis, reasonable bid) - gains {human_points} points and a win")
+            else:
+                print(f"DEBUG: Human bid too high without analysis - no points awarded")
         else:
-            # No market analysis available - award normal points
+            # Market analysis exists but neutral - award points
             human_points = game.calculate_score(actual_price, current_highest_bid)
             session['human_score'] = session.get('human_score', 0) + human_points
             session['human_wins'] = session.get('human_wins', 0) + 1
+            print(f"DEBUG: Human wins (neutral analysis) - gains {human_points} points and a win")
     elif ai_won and winning_agent:
         agent_id = None
         # Find the winning agent's ID
@@ -758,31 +784,49 @@ def end_round():
                 agent_id = aid
                 break
         
-        if market_analysis and market_analysis.get('is_market_winner'):
-            # AI made a good deal - award points only to winning agent
+        if poor_performance:
+            # AI overpaid or performed poorly - NO POINTS and NO WIN COUNT
+            print(f"DEBUG: {winning_agent.name} performed poorly - zero points and no win awarded to anyone")
+            # Do NOT increment ai_wins or agent_wins when performance is poor
+        elif market_analysis and market_analysis.get('is_market_winner'):
+            # AI made a good deal - award points and win only to winning agent
             ai_points = game.calculate_score(actual_price, current_highest_bid)
             if agent_id:
                 # Initialize agent scores dict if not exists
                 if 'agent_scores' not in session:
                     session['agent_scores'] = {}
+                if 'agent_wins' not in session:
+                    session['agent_wins'] = {}
                 session['agent_scores'][agent_id] = session['agent_scores'].get(agent_id, 0) + ai_points
-                print(f"DEBUG: {winning_agent.name} ({agent_id}) gains {ai_points} points (good deal)")
+                session['agent_wins'][agent_id] = session['agent_wins'].get(agent_id, 0) + 1
+                print(f"DEBUG: {winning_agent.name} ({agent_id}) gains {ai_points} points and a win (good deal)")
             session['ai_wins'] = session.get('ai_wins', 0) + 1
-        elif market_analysis and market_analysis.get('is_market_winner') == False:
-            # AI overpaid - no points to winning agent, give learning points to human
-            print(f"DEBUG: {winning_agent.name} overpaid - no points awarded, human gets learning bonus")
-            learning_points = game.calculate_score(actual_price, current_highest_bid) // 2
-            session['human_score'] = session.get('human_score', 0) + learning_points
-            # Still count as AI win for statistics but no score reward to winner
-            session['ai_wins'] = session.get('ai_wins', 0) + 1
+        elif not market_analysis:
+            # No market analysis available - only award if not clearly overpaying
+            if current_highest_bid <= actual_price * 1.1:  # Allow 10% overpay without analysis
+                ai_points = game.calculate_score(actual_price, current_highest_bid)
+                if agent_id:
+                    if 'agent_scores' not in session:
+                        session['agent_scores'] = {}
+                    if 'agent_wins' not in session:
+                        session['agent_wins'] = {}
+                    session['agent_scores'][agent_id] = session['agent_scores'].get(agent_id, 0) + ai_points
+                    session['agent_wins'][agent_id] = session['agent_wins'].get(agent_id, 0) + 1
+                    print(f"DEBUG: {winning_agent.name} ({agent_id}) gains {ai_points} points and a win (no analysis, reasonable bid)")
+                session['ai_wins'] = session.get('ai_wins', 0) + 1
+            else:
+                print(f"DEBUG: {winning_agent.name} bid too high without analysis - no points awarded")
         else:
-            # No market analysis available - award normal points to winning agent only
+            # Market analysis exists but neutral - award points
             ai_points = game.calculate_score(actual_price, current_highest_bid)
             if agent_id:
                 if 'agent_scores' not in session:
                     session['agent_scores'] = {}
+                if 'agent_wins' not in session:
+                    session['agent_wins'] = {}
                 session['agent_scores'][agent_id] = session['agent_scores'].get(agent_id, 0) + ai_points
-                print(f"DEBUG: {winning_agent.name} ({agent_id}) gains {ai_points} points (no analysis)")
+                session['agent_wins'][agent_id] = session['agent_wins'].get(agent_id, 0) + 1
+                print(f"DEBUG: {winning_agent.name} ({agent_id}) gains {ai_points} points and a win (neutral analysis)")
             session['ai_wins'] = session.get('ai_wins', 0) + 1
     
     # Record game outcome for all AI agents
@@ -803,20 +847,29 @@ def end_round():
     session['human_abandoned'] = False
     session['all_ai_abandoned'] = False
     
+    # Determine if this is a true win or just who had the highest bid
+    true_winner = winner
+    if market_analysis and (market_analysis.get('is_market_winner') == False or 
+                           market_analysis.get('value_assessment', '').upper() in ['POOR', 'TERRIBLE']):
+        true_winner = f"{winner} (Market Loser - No Points Awarded)"
+        print(f"DEBUG: Market analysis shows poor performance - {winner} is marked as market loser")
+    
     round_result = {
         'round': session['game_round'],
         'item': current_item['name'],
         'actual_price': actual_price,
         'final_bid': current_highest_bid,
         'bid_sequence': bid_sequence,
-        'winner': winner,
+        'winner': true_winner,  # Updated to show market performance
+        'bid_winner': winner,  # Original highest bidder
         'winning_agent': winning_agent.name if winning_agent else None,
         'human_won': human_won,
         'ai_won': ai_won,
         'human_abandoned': human_abandoned,
         'all_ai_abandoned': all_ai_abandoned,
         'market_analysis': market_analysis,  # Include full market analysis
-        'item_details': current_item  # Include full item details for analysis
+        'item_details': current_item,  # Include full item details for analysis
+        'is_market_winner': market_analysis.get('is_market_winner') if market_analysis else None
     }
     
     game_history = session.get('game_history', [])
@@ -832,6 +885,7 @@ def end_round():
             'human_wins': session.get('human_wins', 0),
             'ai_wins': session.get('ai_wins', 0),
             'agent_scores': session.get('agent_scores', {}),  # Individual agent scores
+            'agent_wins': session.get('agent_wins', {}),  # Individual agent wins
             'winning_agent_id': None if not winning_agent else next((aid for aid, agent in current_agents.items() if agent == winning_agent), None)
         }
     }
@@ -866,7 +920,8 @@ def get_stats():
         'ai_score': sum(session.get('agent_scores', {}).values()),  # Total of all agent scores
         'human_wins': human_wins,
         'ai_wins': session.get('ai_wins', 0),
-        'agent_scores': session.get('agent_scores', {})  # Individual agent scores
+        'agent_scores': session.get('agent_scores', {}),  # Individual agent scores
+        'agent_wins': session.get('agent_wins', {})  # Individual agent wins
     })
 
 @app.route('/reset_game', methods=['POST'])
@@ -880,10 +935,129 @@ def reset_game():
     current_agents = {}
     active_agents = []
     
+    # Initialize fresh session data
+    session['game_initialized'] = True
+    session['human_score'] = 0
+    session['ai_score'] = 0
+    session['human_wins'] = 0
+    session['ai_wins'] = 0
+    session['agent_wins'] = {}  # Reset individual agent wins
+    session['agent_scores'] = {}  # Reset individual agent scores
+    session['game_round'] = 0
+    session['game_history'] = []
+     
     return jsonify({
         'success': True,
         'message': 'Game reset successfully!'
     })
+
+@app.route('/export_chart_data', methods=['GET'])
+def export_chart_data():
+    """Export chart data to CSV file"""
+    try:
+        # Get current game statistics
+        game_history = session.get('game_history', [])
+        agent_wins = session.get('agent_wins', {})
+        agent_scores = session.get('agent_scores', {})
+        human_wins = session.get('human_wins', 0)
+        human_score = session.get('human_score', 0)
+        
+        # Create CSV data in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers for summary statistics
+        writer.writerow(['=== GAME SUMMARY STATISTICS ==='])
+        writer.writerow(['Metric', 'Value'])
+        writer.writerow(['Total Rounds', session.get('game_round', 0)])
+        writer.writerow(['Human Wins', human_wins])
+        writer.writerow(['Human Score', human_score])
+        writer.writerow(['AI Total Wins', session.get('ai_wins', 0)])
+        writer.writerow(['AI Total Score', sum(agent_scores.values())])
+        
+        # Add individual agent statistics
+        writer.writerow([])
+        writer.writerow(['=== INDIVIDUAL AGENT STATISTICS ==='])
+        writer.writerow(['Agent ID', 'Wins', 'Score'])
+        
+        # Get all unique agents from game history and current session
+        all_agents = set(agent_wins.keys()) | set(agent_scores.keys())
+        for agent_id in sorted(all_agents):
+            agent_win_count = agent_wins.get(agent_id, 0)
+            agent_score_total = agent_scores.get(agent_id, 0)
+            writer.writerow([agent_id, agent_win_count, agent_score_total])
+        
+        # Add detailed round history
+        writer.writerow([])
+        writer.writerow(['=== DETAILED ROUND HISTORY ==='])
+        writer.writerow([
+            'Round', 'Item Name', 'Market Price', 'Final Bid', 'Winner', 
+            'Human Won', 'AI Won', 'Market Analysis', 'Value Assessment',
+            'Price Difference %', 'Bid Sequence'
+        ])
+        
+        # Write round data
+        for round_data in game_history:
+            market_analysis = round_data.get('market_analysis', {})
+            bid_sequence_str = ' → '.join([
+                f"{bid['bidder']}: ${bid['amount']:.2f}" 
+                for bid in round_data.get('bid_sequence', [])
+            ])
+            
+            writer.writerow([
+                round_data.get('round', ''),
+                round_data.get('item', ''),
+                f"${round_data.get('actual_price', 0):.2f}",
+                f"${round_data.get('final_bid', 0):.2f}",
+                round_data.get('winner', ''),
+                round_data.get('human_won', False),
+                round_data.get('ai_won', False),
+                market_analysis.get('analysis', 'No analysis') if market_analysis else 'No analysis',
+                market_analysis.get('value_assessment', 'Unknown') if market_analysis else 'Unknown',
+                f"{market_analysis.get('price_difference_percent', 0):.1f}%" if market_analysis else '0.0%',
+                bid_sequence_str
+            ])
+        
+        # Add win tracking data for chart visualization
+        writer.writerow([])
+        writer.writerow(['=== WIN TRACKING DATA FOR CHARTS ==='])
+        writer.writerow(['Player/Agent', 'Win Count', 'Score', 'Type'])
+        writer.writerow(['Human', human_wins, human_score, 'Human'])
+        
+        for agent_id in sorted(all_agents):
+            writer.writerow([
+                agent_id, 
+                agent_wins.get(agent_id, 0), 
+                agent_scores.get(agent_id, 0),
+                'AI Agent'
+            ])
+        
+        # Add timestamp
+        writer.writerow([])
+        writer.writerow(['Export Date', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+        writer.writerow(['Total Rounds Played', len(game_history)])
+        
+        # Prepare file for download
+        output.seek(0)
+        
+        # Create a bytes buffer for the file
+        mem_file = io.BytesIO()
+        mem_file.write(output.getvalue().encode('utf-8'))
+        mem_file.seek(0)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'bidding_game_data_{timestamp}.csv'
+        
+        return send_file(
+            mem_file,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        return jsonify({'error': f'Export failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Create templates directory if it doesn't exist
